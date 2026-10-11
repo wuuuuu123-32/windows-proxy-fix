@@ -1,7 +1,7 @@
-# 让 clone 下来就是 Windows 可用的换行格式：
-# .bat / .ps1 必须是 CRLF —— 裸 LF 会让 cmd 拆坏 if (...) 括号块
-* text=auto
-*.ps1 text eol=crlf
-*.bat text eol=crlf
-*.cmd text eol=crlf
-*.md  text eol=lf
+# 让 .bat / .ps1 在仓库里就保存原始字节（CRLF）：
+# 这样不论从哪个入口拿到文件 —— clone、Download ZIP、网页单文件 raw 下载 —— 都是 Windows 能用的换行。
+# 裸 LF 会让 cmd 把 if (...) 括号块拆坏，报「'xxx' 不是内部或外部命令」。
+*.bat -text
+*.cmd -text
+*.ps1 -text
+*.md text eol=lf
