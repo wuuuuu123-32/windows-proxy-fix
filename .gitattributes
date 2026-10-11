@@ -1,0 +1,7 @@
+# 让 clone 下来就是 Windows 可用的换行格式：
+# .bat / .ps1 必须是 CRLF —— 裸 LF 会让 cmd 拆坏 if (...) 括号块
+* text=auto
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.md  text eol=lf
