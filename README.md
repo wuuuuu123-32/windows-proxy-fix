@@ -1,5 +1,8 @@
 # 代理残留修复工具（Windows）
 
+> **只想拿来用？** 到 [Releases](../../releases/latest) 下载 zip，解压后双击 `fix-proxy.bat` 就行，
+> 不必看下面的原理说明。
+
 代理软件（Clash / Clash for Windows / Clash Verge / mihomo / v2rayN / sing-box …）
 在**断电、强制关机、崩溃、蓝屏**之后没能正常退出，会在系统里留下收不回去的代理设置。
 典型症状：
@@ -28,7 +31,7 @@ Windows 里有**两套互不相干**的代理设置：
 
 ## 使用方法
 
-1. 下载这两个文件，**放在同一个文件夹里**：
+1. 下载 [Releases](../../releases/latest) 里的 zip（或 `git clone` 本仓库），解压到任意文件夹，**确保这两个文件在同一个目录里**：
    - `fix-proxy.bat`
    - `fix-proxy.ps1`
 2. 双击 `fix-proxy.bat`
