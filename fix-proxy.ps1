@@ -465,17 +465,44 @@ if (-not $webOK -and -not $DryRun) {
     $ans = Read-Host '  输入 Y 再回车执行，直接回车则跳过'
     if ($ans -eq 'Y' -or $ans -eq 'y') {
         # 同理必须查退出码：这三条失败时也只设置 $LASTEXITCODE、不抛异常。
-        # 其中 `netsh int ip reset` 即使成功也常返回 1，所以只在三条全非零时判失败。
+        # 逐条报告结果，而不是"有一条成功就整体成功" —— 三条互相独立，
+        # 只重置成功一条时整个堆栈并没有复位完（2026-10-17 独立评审指出）。
+        # 注意 `netsh int ip reset` 即使成功也常返回 1，所以"全非零"才判整体失败。
+        $stackSteps = @('winsock', 'int ip', 'int ipv6')
         $stackCodes = @()
-        try { & netsh winsock reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
-        try { & netsh int ip reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
-        try { & netsh int ipv6 reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
-        if (($stackCodes | Where-Object { $_ -eq 0 }).Count -gt 0) {
-            Write-Ok '网络堆栈已重置，请重启电脑。'
-        } else {
-            Write-Alert ("网络堆栈重置全部失败（退出码 " + ($stackCodes -join ', ') + "），多半没有管理员权限。")
+        foreach ($step in $stackSteps) {
+            $code = 1
+            $out = ''
+            try {
+                if ($step -eq 'winsock') { $out = (& netsh winsock reset 2>&1 | Out-String) }
+                elseif ($step -eq 'int ip') { $out = (& netsh int ip reset 2>&1 | Out-String) }
+                else { $out = (& netsh int ipv6 reset 2>&1 | Out-String) }
+                $code = $LASTEXITCODE
+            } catch { $code = 1; $out = '' }
+            # ❗不能只看退出码：netsh int ip reset 明明做成了也常返回 1，
+            # 只按退出码判会把成功报成失败，用户被误导去反复重跑（2026-10-17 复审第二次指出）。
+            # 所以「退出码 0」或「自己打印了 OK」都算成功。
+            $ok = ($code -eq 0) -or ($out -match 'OK!?|成功')
+            $stackCodes += [pscustomobject]@{ Name = $step; Code = $code; Ok = $ok }
+            if ($ok) {
+                if ($code -eq 0) { Write-Ok ("  netsh " + $step + " reset 完成") }
+                else { Write-Ok ("  netsh " + $step + " reset 完成（退出码 " + $code + "，但输出里是 OK，按成功算）") }
+            } else {
+                Write-Alert ("  netsh " + $step + " reset 返回 " + $code + "（这一步没做成）")
+            }
         }
-        Add-Report '已执行 winsock / int ip reset'
+        $stackSummary = (($stackCodes | ForEach-Object { $_.Name + '=' + $_.Code + $(if ($_.Ok) { '/ok' } else { '/fail' }) }) -join ', ')
+        # ❗三态报告：不能把"部分成功"说成"已重置"，那样用户会以为已经复位完。
+        $stackOkCount = @($stackCodes | Where-Object { $_.Ok }).Count
+        $stackTotal = $stackCodes.Count
+        if ($stackOkCount -eq $stackTotal) {
+            Write-Ok '网络堆栈已全部重置，请重启电脑。'
+        } elseif ($stackOkCount -gt 0) {
+            Write-Alert ("网络堆栈只重置成功 $stackOkCount/$stackTotal 条（" + $stackSummary + "）。完整复位没做到，重启后若仍不通，请用管理员身份重跑本脚本。")
+        } else {
+            Write-Alert ("三条 reset 全部返回非 0（" + $stackSummary + "），多半没有管理员权限，网络堆栈实际没重置。")
+        }
+        Add-Report ('网络堆栈重置结果：' + $stackSummary)
     } else {
         Write-Line '  已跳过深度修复。'
     }
