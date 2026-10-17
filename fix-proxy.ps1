@@ -315,11 +315,14 @@ Add-Report ('WinHTTP（重置前）：' + (Get-WinHttpSummary $showBefore))
 if ($DryRun) {
     Write-Line '  （演练模式，跳过）netsh winhttp reset proxy' 'DarkYellow'
 } else {
-    try {
-        & netsh winhttp reset proxy 2>&1 | Out-Null
+    # 注意：netsh 失败时不会抛异常，只会设置 $LASTEXITCODE，所以不能用 try/catch 判断
+    # （2026-10-17 修：原来无条件打印「已重置」，没管理员权限时是假成功）。
+    $winhttpExit = 0
+    try { & netsh winhttp reset proxy 2>&1 | Out-Null; $winhttpExit = $LASTEXITCODE } catch { $winhttpExit = 1 }
+    if ($winhttpExit -eq 0) {
         Write-Ok 'WinHTTP 代理已重置为「直接访问」。'
-    } catch {
-        Write-Alert 'netsh winhttp 执行失败，可忽略，继续下一步。'
+    } else {
+        Write-Alert ("netsh winhttp reset proxy 失败（退出码 $winhttpExit），多半是没用管理员权限运行。这一步没做成，其他步骤不受影响。")
     }
     $showAfter = @()
     try { $showAfter = @(& netsh winhttp show proxy 2>&1) } catch { }
@@ -461,10 +464,17 @@ if (-not $webOK -and -not $DryRun) {
     Write-Line '  注意：这一步会重置网卡配置（设过固定 IP 的要重新设），并且必须重启电脑。' 'Yellow'
     $ans = Read-Host '  输入 Y 再回车执行，直接回车则跳过'
     if ($ans -eq 'Y' -or $ans -eq 'y') {
-        try { & netsh winsock reset 2>&1 | Out-Null } catch { }
-        try { & netsh int ip reset 2>&1 | Out-Null } catch { }
-        try { & netsh int ipv6 reset 2>&1 | Out-Null } catch { }
-        Write-Ok '网络堆栈已重置，请重启电脑。'
+        # 同理必须查退出码：这三条失败时也只设置 $LASTEXITCODE、不抛异常。
+        # 其中 `netsh int ip reset` 即使成功也常返回 1，所以只在三条全非零时判失败。
+        $stackCodes = @()
+        try { & netsh winsock reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
+        try { & netsh int ip reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
+        try { & netsh int ipv6 reset 2>&1 | Out-Null; $stackCodes += $LASTEXITCODE } catch { $stackCodes += 1 }
+        if (($stackCodes | Where-Object { $_ -eq 0 }).Count -gt 0) {
+            Write-Ok '网络堆栈已重置，请重启电脑。'
+        } else {
+            Write-Alert ("网络堆栈重置全部失败（退出码 " + ($stackCodes -join ', ') + "），多半没有管理员权限。")
+        }
         Add-Report '已执行 winsock / int ip reset'
     } else {
         Write-Line '  已跳过深度修复。'
